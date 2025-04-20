@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -48,24 +49,17 @@ type SelectronicData struct {
 }
 
 var (
-	latestData      *SelectronicData
-	latestDataErr   error
-	latestDataMutex sync.RWMutex
-	headerPrinted   bool
-	headerMutex     sync.Mutex
-	printedLines    int
+	latestData        *SelectronicData
+	latestDataErr     error
+	globalMutex       sync.RWMutex
+	headerPrinted     bool
+	printedLines      int
+	latestTemperature float64
 )
 
 // FetchSelectronicData retrieves SelectronicData from the specified URL, using the current Unix timestamp.
 func FetchSelectronicData() (*SelectronicData, error) {
-	// Get current Unix timestamp using shell date command
-	cmd := exec.Command("date", "+%s")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-	timestamp := string(out)
-	timestamp = strings.TrimSpace(timestamp)
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	url := "http://192.168.1.45/cgi-bin/solarmonweb/devices/024ACEDAE30B42800C8C982AA952369F/point?_=" + timestamp
 
@@ -85,14 +79,28 @@ func FetchSelectronicData() (*SelectronicData, error) {
 		return nil, err
 	}
 
-	headerMutex.Lock()
+	// Fetch temperature from temper/temper
+	tempCmd := exec.Command("temper/temper")
+	tempOut, tempErr := tempCmd.Output()
+	var tempVal float64
+	if tempErr == nil {
+		tempStr := strings.TrimSpace(string(tempOut))
+		if val, err := strconv.ParseFloat(tempStr, 64); err == nil {
+			tempVal = val
+		}
+	}
+
+	globalMutex.Lock()
 	if !headerPrinted || printedLines%10 == 0 {
-		fmt.Printf("%-6s %-10s %-8s %-8s %-10s %-12s %-14s %-14s\n",
-			"soc", "battery_w", "load_w", "shunt_w", "solar_w", "total_pv_w", "gen_kwh_today", "load_kwh_today")
+		fmt.Printf("%-7s %-10s %-8s %-8s %-10s %-12s %-14s %-14s %-8s\n",
+			"soc", "battery_w", "load_w", "shunt_w", "solar_w", "total_pv_w", "gen_kwh_today", "load_kwh_today", "temp_C")
 		headerPrinted = true
 	}
 	printedLines++
-	headerMutex.Unlock()
+	if tempErr == nil {
+		latestTemperature = tempVal
+	}
+	globalMutex.Unlock()
 
 	soc := data.Items.BatterySoc
 	batteryW := int(data.Items.BatteryW)
@@ -103,8 +111,12 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	generatorKwhToday := data.Items.GridInWhToday / 1000 // Convert Wh to kWh
 	loadKwhToday := data.Items.LoadWhToday / 1000        // Convert Wh to kWh
 
-	fmt.Printf("%-6.1f %-10d %-8d %-8d %-10d %-12d %-14.2f %-14.2f\n",
-		soc, batteryW, loadW, shuntW, solarInverterW, totalPVW, generatorKwhToday, loadKwhToday)
+	globalMutex.RLock()
+	tempC := latestTemperature
+	globalMutex.RUnlock()
+
+	fmt.Printf("%-6.1f%% %-10d %-8d %-8d %-10d %-12d %-14.2f %-14.2f %-8.2f\n",
+		soc, batteryW, loadW, shuntW, solarInverterW, totalPVW, generatorKwhToday, loadKwhToday, tempC)
 
 	return &data, nil
 }
@@ -113,19 +125,19 @@ func main() {
 	go func() {
 		for {
 			data, err := FetchSelectronicData()
-			latestDataMutex.Lock()
+			globalMutex.Lock()
 			latestData = data
 			latestDataErr = err
-			latestDataMutex.Unlock()
+			globalMutex.Unlock()
 			time.Sleep(10 * time.Second)
 		}
 	}()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		latestDataMutex.RLock()
+		globalMutex.RLock()
 		data := latestData
 		err := latestDataErr
-		latestDataMutex.RUnlock()
+		globalMutex.RUnlock()
 
 		if err != nil {
 			http.Error(w, "Failed to fetch data: "+err.Error(), http.StatusInternalServerError)
