@@ -12,6 +12,102 @@ import (
 	"time"
 )
 
+var htmlPage = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar Monitor</title>
+<style>
+body {
+    font-family: sans-serif;
+    background: #222;
+    color: #fff;
+    margin: 0;
+    padding: 0;
+}
+.container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    gap: 2vw;
+}
+@media (max-width: 700px) {
+    .container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+.card {
+    background: #333;
+    border-radius: 1em;
+    padding: 2em 1em;
+    margin: 1em 0;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 0 10px #0008;
+}
+.emoji {
+    font-size: 3em;
+    margin-bottom: 0.5em;
+}
+.value {
+    font-size: 2.5em;
+    font-weight: bold;
+    margin-bottom: 0.2em;
+}
+.label {
+    font-size: 1.2em;
+    color: #aaa;
+}
+.battery { color: #00e676; }
+.pv { color: #ffd600; }
+.gen { color: #40c4ff; }
+.load { color: #ff1744; }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="emoji battery">🔋</div>
+        <div class="value" id="soc">--%</div>
+        <div class="label">Battery SOC</div>
+        <div class="emoji pv">☀️</div>
+        <div class="value" id="pv">-- kW</div>
+        <div class="label">Total PV</div>
+        <div class="emoji gen">🏭</div>
+        <div class="value" id="gen">-- kW</div>
+        <div class="label">Generator</div>
+        <div class="emoji load">🔌</div>
+        <div class="value" id="load">-- kW</div>
+        <div class="label">Load</div>
+    </div>
+    <div class="card" id="second-col">
+        <!-- You can add more info here later -->
+    </div>
+</div>
+<script>
+function updateData() {
+    fetch('/data').then(r => r.json()).then(data => {
+        document.getElementById('soc').textContent = (data.items.battery_soc || 0).toFixed(1) + '%';
+        let totalPV = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0)) / 1000;
+        document.getElementById('pv').textContent = totalPV.toFixed(2) + ' kW';
+        document.getElementById('gen').textContent = ((data.items.grid_w || 0) / 1000).toFixed(2) + ' kW';
+        document.getElementById('load').textContent = ((data.items.load_w || 0) / 1000).toFixed(2) + ' kW';
+    });
+}
+setInterval(updateData, 5000);
+updateData();
+</script>
+</body>
+</html>
+`
+
 type SelectronicDevice struct {
 	Name string `json:"name"`
 }
@@ -134,6 +230,11 @@ func main() {
 	}()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, htmlPage)
+	})
+
+	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
 		globalMutex.RLock()
 		data := latestData
 		err := latestDataErr
