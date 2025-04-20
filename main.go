@@ -87,8 +87,8 @@ func FetchSelectronicData() (*SelectronicData, error) {
 
 	headerMutex.Lock()
 	if !headerPrinted || printedLines%10 == 0 {
-		fmt.Printf("%-6s %-10s %-8s %-8s %-15s %-12s %-18s %-14s\n",
-			"soc", "battery_w", "load_w", "shunt_w", "solarinverter_w", "total_pv_w", "generator_kwh_today", "load_kwh_today")
+		fmt.Printf("%-6s %-10s %-8s %-8s %-10s %-12s %-14s %-14s\n",
+			"soc", "battery_w", "load_w", "shunt_w", "solar_w", "total_pv_w", "gen_kwh_today", "load_kwh_today")
 		headerPrinted = true
 	}
 	printedLines++
@@ -101,9 +101,9 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	solarInverterW := int(data.Items.SolarInverterW)
 	totalPVW := solarInverterW + shuntW
 	generatorKwhToday := data.Items.GridInWhToday / 1000 // Convert Wh to kWh
-	loadKwhToday := data.Items.LoadWhToday / 1000 // Convert Wh to kWh
+	loadKwhToday := data.Items.LoadWhToday / 1000        // Convert Wh to kWh
 
-	fmt.Printf("%-6.1f %-10d %-8d %-8d %-15d %-12d %-18.2f %-14.2f\n",
+	fmt.Printf("%-6.1f %-10d %-8d %-8d %-10d %-12d %-14.2f %-14.2f\n",
 		soc, batteryW, loadW, shuntW, solarInverterW, totalPVW, generatorKwhToday, loadKwhToday)
 
 	return &data, nil
