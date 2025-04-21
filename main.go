@@ -27,13 +27,22 @@ body {
     margin: 0;
     padding: 0;
 }
+html, body {
+    height: 100%;
+    width: 100%;
+}
 .container {
     display: flex;
     flex-direction: row;
     justify-content: center;
     align-items: flex-start;
     min-height: 100vh;
-    gap: 2vw;
+    gap: 4vw;
+    padding: 3vw 2vw 3vw 2vw;
+    margin: 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 1200px;
 }
 @media (max-width: 700px) {
     .container {
@@ -43,49 +52,79 @@ body {
 }
 .card {
     background: #333;
-    border-radius: 1em;
-    padding: 2em 1em;
-    margin: 1em 0;
+    border-radius: 1.5em;
+    padding: 3em 2em;
+    margin: 2em 1em;
     flex: 1 1 0;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    box-shadow: 0 0 18px #000a;
+}
+.row {
+    display: flex;
+    flex-direction: row;
     align-items: center;
-    box-shadow: 0 0 10px #0008;
-}
-.emoji {
-    font-size: 3em;
-    margin-bottom: 0.5em;
-}
-.value {
-    font-size: 2.5em;
-    font-weight: bold;
-    margin-bottom: 0.2em;
+    justify-content: space-between;
+    width: 100%;
+    margin: 1.5em 0;
+    gap: 2em;
+    padding: 0.5em 0.5em;
 }
 .label {
-    font-size: 1.2em;
+    font-size: 1.3em;
     color: #aaa;
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    padding: 0.3em 0.7em 0.3em 0.3em;
+    margin-right: 1em;
+}
+.value {
+    font-size: 2.2em;
+    font-weight: bold;
+    min-width: 4em;
+    text-align: right;
+    margin-bottom: 0;
+    padding: 0.3em 0.3em 0.3em 0.7em;
+}
+.arrow {
+    font-size: 2.2em;
+    font-weight: bold;
+		margin-left: -1.5em;
+}
+.emoji {
+    font-size: 1.7em;
+    margin-bottom: 0;
+    margin-right: 0.5em;
 }
 .battery { color: #00e676; }
 .pv { color: #ffd600; }
-.gen { color: #40c4ff; }
 .load { color: #ff1744; }
 </style>
 </head>
 <body>
 <div class="container">
     <div class="card">
-        <div class="emoji battery">🔋</div>
-        <div class="value" id="soc">--%</div>
-        <div class="label">Battery SOC</div>
-        <div class="emoji pv">☀️</div>
-        <div class="value" id="pv">-- kW</div>
-        <div class="label">Total PV</div>
-        <div class="emoji gen">🏭</div>
-        <div class="value" id="gen">-- kW</div>
-        <div class="label">Generator</div>
-        <div class="emoji load">🔌</div>
-        <div class="value" id="load">-- kW</div>
-        <div class="label">Load</div>
+        <div class="row">
+            <div class="label">
+                <span class="emoji battery">🔋</span>
+                Battery
+            </div>
+            <div class="value" id="soc">--%</div><span class="arrow" id="battery-arrow"></span>
+        </div>
+        <div class="row">
+            <div class="label">
+                <span class="emoji pv">⚡</span> Generation
+            </div>
+            <div class="value" id="pv">-- kW</div>
+        </div>
+        <div class="row">
+            <div class="label">
+                <span class="emoji load">🔌</span> Consumption
+            </div>
+            <div class="value" id="load">-- kW</div>
+        </div>
     </div>
     <div class="card" id="second-col">
         <!-- You can add more info here later -->
@@ -94,11 +133,17 @@ body {
 <script>
 function updateData() {
     fetch('/data').then(r => r.json()).then(data => {
-        document.getElementById('soc').textContent = (data.items.battery_soc || 0).toFixed(1) + '%';
-        let totalPV = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0)) / 1000;
-        document.getElementById('pv').textContent = totalPV.toFixed(2) + ' kW';
-        document.getElementById('gen').textContent = ((data.items.grid_w || 0) / 1000).toFixed(2) + ' kW';
-        document.getElementById('load').textContent = ((data.items.load_w || 0) / 1000).toFixed(2) + ' kW';
+        let socVal = (data.items.battery_soc || 0).toFixed(1) + ' %';
+        document.getElementById('soc').textContent = socVal;
+        let batteryW = data.items.battery_w || 0;
+        let arrow = '';
+        if (batteryW < -5) arrow = '↑';      // Charging when battery is negative (power flowing in)
+        else if (batteryW > 5) arrow = '🡓'; // Discharging (power flowing out)
+        else arrow = '';                      // Idle/neutral
+        document.getElementById('battery-arrow').textContent = arrow;
+        let totalGen = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0) + (data.items.grid_w || 0)) / 1000;
+        document.getElementById('pv').textContent = totalGen.toFixed(1) + ' kW';
+        document.getElementById('load').textContent = ((data.items.load_w || 0) / 1000).toFixed(1) + ' kW';
     });
 }
 setInterval(updateData, 5000);
