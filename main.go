@@ -44,10 +44,30 @@ html, body {
     width: 100%;
     max-width: 1200px;
 }
-@media (max-width: 700px) {
+@media (max-width: 850px) {
+    body { 
+        background: #444 !important; 
+    }
     .container {
         flex-direction: column;
         align-items: stretch;
+    }
+    .container .label {
+        font-size: 1.2em !important;
+    }
+    .container .value {
+        font-size: 1.5em !important;
+    }
+    .container .arrow {
+        font-size: 1.3em !important;
+        margin-left: -1.0em !important;
+        margin-right: 0 !important;
+        position: static !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
+    }
+    .container .emoji {
+        font-size: 1.1em !important;
     }
 }
 .card {
@@ -61,37 +81,60 @@ html, body {
     align-items: stretch;
     box-shadow: 0 0 18px #000a;
 }
+.rightcard {
+    background: #292929;
+    border-radius: 1.5em;
+    padding: 2.2em 1.5em;
+    margin: 2em 1em;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-shadow: 0 0 18px #000a;
+}
+.rightcard .label {
+    font-size: 1.2em;
+}
+.rightcard .value {
+    font-size: 1.6em;
+}
 .row {
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    margin: 1.5em 0;
+    margin: 0.8em 0;
     gap: 2em;
     padding: 0.5em 0.5em;
 }
+
+.rightcard .row {
+    margin: 0.7em 0;
+    padding: 0.3em 0.5em;
+}
+
 .label {
-    font-size: 1.3em;
+    font-size: 2.0em;
     color: #aaa;
     display: flex;
     align-items: center;
     gap: 0.7em;
-    padding: 0.3em 0.7em 0.3em 0.3em;
-    margin-right: 1em;
+    padding: 0.3em 0.3em 0.3em 0.3em;
+    margin-right: 0.7em;
 }
 .value {
-    font-size: 2.2em;
+    font-size: 2.5em;
     font-weight: bold;
     min-width: 4em;
     text-align: right;
     margin-bottom: 0;
-    padding: 0.3em 0.3em 0.3em 0.7em;
+    padding: 0.3em 0.6em 0.3em 0.3em;
 }
 .arrow {
     font-size: 2.2em;
     font-weight: bold;
-		margin-left: -1.5em;
+		margin-left: -4.0em;
 }
 .emoji {
     font-size: 1.7em;
@@ -114,6 +157,10 @@ html, body {
             <div class="value" id="soc">--%</div><span class="arrow" id="battery-arrow"></span>
         </div>
         <div class="row">
+            <div class="label"><span class="emoji"> </span><div id="battery-time-label">--</div></div>
+            <div class="value" id="battery-time">-- h</div>
+        </div>
+        <div class="row">
             <div class="label">
                 <span class="emoji pv">⚡</span> Generation
             </div>
@@ -126,8 +173,31 @@ html, body {
             <div class="value" id="load">-- kW</div>
         </div>
     </div>
-    <div class="card" id="second-col">
-        <!-- You can add more info here later -->
+    <div class="card rightcard" id="second-col">
+        <div class="row">
+            <div class="label">🌡️ Temperature</div>
+            <div class="value" id="temp">-- °C</div>
+        </div>
+        <div class="row">
+            <div class="label">🔌 kWh Consumed</div>
+            <div class="value" id="kwh-consumed">-- kWh</div>
+        </div>
+        <div class="row">
+            <div class="label">⚡ kWh Generated</div>
+            <div class="value" id="kwh-generated">-- kWh</div>
+        </div>
+        <div class="row">
+            <div class="label">🔋 Battery kW</div>
+            <div class="value" id="battery-kw">-- kW</div>
+        </div>
+        <div class="row">
+            <div class="label">🚜 Generator</div>
+            <div class="value" id="gen-status">--</div>
+        </div>
+        <div class="row">
+            <div class="label">🚨 Fault</div>
+            <div class="value" id="fault-status">--</div>
+        </div>
     </div>
 </div>
 <script>
@@ -137,13 +207,41 @@ function updateData() {
         document.getElementById('soc').textContent = socVal;
         let batteryW = data.items.battery_w || 0;
         let arrow = '';
-        if (batteryW < -5) arrow = '↑';      // Charging when battery is negative (power flowing in)
-        else if (batteryW > 5) arrow = '🡓'; // Discharging (power flowing out)
+        if (batteryW < -5) arrow = '▲';      // Charging when battery is negative (power flowing in)
+        else if (batteryW > 5) arrow = '▼'; // Discharging (power flowing out)
         else arrow = '';                      // Idle/neutral
         document.getElementById('battery-arrow').textContent = arrow;
+
+        // Calculate and display "Full in"/"Empty in"
+        let avgBatteryW = data.avg_battery_w || 0;
+        let hours = 0;
+        let label = '--';
+        if (avgBatteryW > 5) {
+            // Discharging
+            hours = data.hours_until_empty || 0;
+            label = '🚫 Empty in';
+        } else if (avgBatteryW < -5) {
+            // Charging
+            hours = data.hours_until_full || 0;
+            label = '✅ Full in';
+        } else {
+            hours = 0;
+            label = '--';
+        }
+        document.getElementById('battery-time-label').textContent = label;
+        document.getElementById('battery-time').textContent = hours > 0 ? hours.toFixed(1) + ' h' : '-- h';
+
         let totalGen = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0) + (data.items.grid_w || 0)) / 1000;
         document.getElementById('pv').textContent = totalGen.toFixed(1) + ' kW';
         document.getElementById('load').textContent = ((data.items.load_w || 0) / 1000).toFixed(1) + ' kW';
+        
+        // Right card updates
+        document.getElementById('temp').textContent = (data.temperature !== undefined ? data.temperature.toFixed(1) : '--') + ' °C';
+        document.getElementById('kwh-consumed').textContent = ((data.items.load_wh_today || 0) / 1000).toFixed(1) + ' kWh';
+        document.getElementById('kwh-generated').textContent = ((data.items.solar_wh_today || 0) / 1000).toFixed(1) + ' kWh';
+        document.getElementById('battery-kw').textContent = ((data.items.battery_w || 0) / 1000).toFixed(1) + ' kW';
+        document.getElementById('gen-status').textContent = (data.items.gen_status && data.items.gen_status !== 0) ? 'On' : 'Off';
+        document.getElementById('fault-status').textContent = (data.items.fault_code && data.items.fault_code !== 0) ? 'YES' : 'No';
     });
 }
 setInterval(updateData, 5000);
@@ -196,7 +294,107 @@ var (
 	headerPrinted     bool
 	printedLines      int
 	latestTemperature float64
+	itemsHistory      []SelectronicItems
+	itemsHistoryMutex sync.Mutex
 )
+
+const BatterykWh = 24
+const BatteryEmptyAtSoc = 25
+
+// AverageBatteryW returns the average BatteryW from itemsHistory.
+func AverageBatteryW() float64 {
+	itemsHistoryMutex.Lock()
+	defer itemsHistoryMutex.Unlock()
+	if len(itemsHistory) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, item := range itemsHistory {
+		sum += item.BatteryW
+	}
+	return sum / float64(len(itemsHistory))
+}
+
+// AverageTotalGeneration returns the average of (GridW + ShuntW + SolarInverterW) from itemsHistory.
+func AverageTotalGeneration() float64 {
+	itemsHistoryMutex.Lock()
+	defer itemsHistoryMutex.Unlock()
+	if len(itemsHistory) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, item := range itemsHistory {
+		sum += item.GridW + item.ShuntW + item.SolarInverterW
+	}
+	return sum / float64(len(itemsHistory))
+}
+
+// AverageLoadW returns the average LoadW from itemsHistory.
+func AverageLoadW() float64 {
+	itemsHistoryMutex.Lock()
+	defer itemsHistoryMutex.Unlock()
+	if len(itemsHistory) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, item := range itemsHistory {
+		sum += item.LoadW
+	}
+	return sum / float64(len(itemsHistory))
+}
+
+// HoursUntilFull returns the estimated hours until the battery is full (100% SoC),
+// only if AverageBatteryW is negative (charging). Returns 0 if not charging or data unavailable.
+func HoursUntilFull() float64 {
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
+	if latestData == nil {
+		return 0
+	}
+	currentSoc := latestData.Items.BatterySoc
+	// Calculate current kWh in battery
+	currentKWh := (currentSoc / 100.0) * BatterykWh
+	// kWh needed to reach full
+	kWhNeeded := BatterykWh - currentKWh
+
+	avgBatteryW := AverageBatteryW()
+	if avgBatteryW >= 0 {
+		return 0 // Not charging
+	}
+	// avgBatteryW is negative when charging (power flowing into battery)
+	chargingKW := -avgBatteryW / 1000.0
+	if chargingKW <= 0 {
+		return 0
+	}
+	return kWhNeeded / chargingKW
+}
+
+// HoursUntilEmpty returns the estimated hours until the battery is empty (reaches BatteryEmptyAtSoc% SoC),
+// only if AverageBatteryW is positive (discharging). Returns 0 if not discharging or data unavailable.
+func HoursUntilEmpty() float64 {
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
+	if latestData == nil {
+		return 0
+	}
+	currentSoc := latestData.Items.BatterySoc
+	// Calculate current kWh in battery
+	currentKWh := (currentSoc / 100.0) * BatterykWh
+	// kWh available until empty threshold
+	emptyKWh := (BatteryEmptyAtSoc / 100.0) * BatterykWh
+	kWhAvailable := currentKWh - emptyKWh
+
+	avgBatteryW := AverageBatteryW()
+	if avgBatteryW <= 0 {
+		return 0 // Not discharging
+	}
+	// avgBatteryW is positive when discharging (power flowing out of battery)
+	dischargeKW := avgBatteryW / 1000.0
+	if dischargeKW <= 0 {
+		return 0
+	}
+	return kWhAvailable / dischargeKW
+}
 
 // FetchSelectronicData retrieves SelectronicData from the specified URL, using the current Unix timestamp.
 func FetchSelectronicData() (*SelectronicData, error) {
@@ -256,8 +454,16 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	tempC := latestTemperature
 	globalMutex.RUnlock()
 
-	fmt.Printf("%-6.1f%% %-10d %-8d %-8d %-10d %-12d %-14.2f %-14.2f %-8.2f\n",
+	fmt.Printf("%-3.1f%%   %-10d %-8d %-8d %-10d %-12d %-14.2f %-14.2f %-8.2f\n",
 		soc, batteryW, loadW, shuntW, solarInverterW, totalPVW, generatorKwhToday, loadKwhToday, tempC)
+
+	// Maintain a rolling history of the last 30 SelectronicItems
+	itemsHistoryMutex.Lock()
+	itemsHistory = append(itemsHistory, data.Items)
+	if len(itemsHistory) > 20 {
+		itemsHistory = itemsHistory[1:]
+	}
+	itemsHistoryMutex.Unlock()
 
 	return &data, nil
 }
@@ -294,7 +500,21 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(data)
+		type OutData struct {
+			*SelectronicData
+			Temperature     float64 `json:"temperature"`
+			AvgBatteryW     float64 `json:"avg_battery_w"`
+			HoursUntilFull  float64 `json:"hours_until_full"`
+			HoursUntilEmpty float64 `json:"hours_until_empty"`
+		}
+		out := OutData{
+			SelectronicData: data,
+			Temperature:     latestTemperature,
+			AvgBatteryW:     AverageBatteryW(),
+			HoursUntilFull:  HoursUntilFull(),
+			HoursUntilEmpty: HoursUntilEmpty(),
+		}
+		json.NewEncoder(w).Encode(out)
 	})
 
 	http.ListenAndServe(":8080", nil)
