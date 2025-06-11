@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -231,7 +232,7 @@ function updateData() {
         document.getElementById('battery-time-label').textContent = label;
         document.getElementById('battery-time').textContent = hours > 0 ? hours.toFixed(1) + ' h' : '-- h';
 
-        let totalGen = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0) + (data.items.grid_w || 0)) / 1000;
+        let totalGen = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0) + Math.abs(data.items.grid_w || 0)) / 1000;
         document.getElementById('pv').textContent = (Math.floor(totalGen * 10) / 10).toFixed(1) + ' kW';
         document.getElementById('load').textContent = ((data.items.load_w || 0) / 1000).toFixed(1) + ' kW';
         
@@ -296,10 +297,12 @@ var (
 	latestTemperature float64
 	itemsHistory      []SelectronicItems
 	itemsHistoryMutex sync.Mutex
+
+	prevGeneratorKwhToday float64
 )
 
 const BatterykWh = 24
-const BatteryEmptyAtSoc = 25
+const BatteryEmptyAtSoc = 30
 
 // AverageBatteryW returns the average BatteryW from itemsHistory.
 func AverageBatteryW() float64 {
@@ -324,7 +327,7 @@ func AverageTotalGeneration() float64 {
 	}
 	var sum float64
 	for _, item := range itemsHistory {
-		sum += item.GridW + item.ShuntW + item.SolarInverterW
+		sum += math.Abs(item.GridW) + item.ShuntW + item.SolarInverterW
 	}
 	return sum / float64(len(itemsHistory))
 }
@@ -430,8 +433,8 @@ func FetchSelectronicData() (*SelectronicData, error) {
 			tempVal = val
 		}
 	} else {
-	  fmt.Printf("Error getting temp: %v\n", tempErr)
-  }
+		fmt.Printf("Error getting temp: %v\n", tempErr)
+	}
 
 	globalMutex.Lock()
 	if !headerPrinted || printedLines%10 == 0 {
@@ -450,9 +453,16 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	loadW := int(data.Items.LoadW)
 	shuntW := int(data.Items.ShuntW)
 	solarInverterW := int(data.Items.SolarInverterW)
-	totalPVW := solarInverterW + shuntW
+	totalPVW := solarInverterW + shuntW + int(math.Abs(float64(data.Items.GridW)))
 	generatorKwhToday := data.Items.GridInWhToday / 1000 // Convert Wh to kWh
 	loadKwhToday := data.Items.LoadWhToday               // Already in kWh
+
+	// Set GenStatus = 1 if generatorKwhToday has increased since last fetch
+	if generatorKwhToday > prevGeneratorKwhToday {
+		data.Items.GenStatus = 1
+	} else {
+		data.Items.GenStatus = 0
+	}
 
 	globalMutex.RLock()
 	tempC := latestTemperature
@@ -468,6 +478,8 @@ func FetchSelectronicData() (*SelectronicData, error) {
 		itemsHistory = itemsHistory[1:]
 	}
 	itemsHistoryMutex.Unlock()
+
+	prevGeneratorKwhToday = generatorKwhToday
 
 	return &data, nil
 }
