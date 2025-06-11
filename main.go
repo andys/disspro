@@ -175,20 +175,20 @@ html, body {
     </div>
     <div class="card rightcard" id="second-col">
         <div class="row">
-            <div class="label">🌡️ Temperature</div>
+            <div class="label">Temperature</div>
             <div class="value" id="temp">-- °C</div>
         </div>
         <div class="row">
-            <div class="label">🔌 kWh Consumed</div>
+            <div class="label">Consumed Today</div>
             <div class="value" id="kwh-consumed">-- kWh</div>
-        </div>
-        <div class="row">
-            <div class="label">⚡ kWh Generated</div>
-            <div class="value" id="kwh-generated">-- kWh</div>
         </div>
         <div class="row">
             <div class="label">🔋 Battery kW</div>
             <div class="value" id="battery-kw">-- kW</div>
+        </div>
+        <div class="row">
+            <div class="label">Generator Today</div>
+            <div class="value" id="gen-made">-- kWh</div>
         </div>
         <div class="row">
             <div class="label">🚜 Generator</div>
@@ -215,12 +215,12 @@ function updateData() {
         // Calculate and display "Full in"/"Empty in"
         let avgBatteryW = data.avg_battery_w || 0;
         let hours = 0;
-        let label = '--';
-        if (avgBatteryW > 5) {
+        let label = '--';				
+        if (avgBatteryW > 5 && data.hours_until_empty < 24) {
             // Discharging
             hours = data.hours_until_empty || 0;
             label = '🚫 Empty in';
-        } else if (avgBatteryW < -5) {
+        } else if (avgBatteryW < -5 && data.hours_until_full < 24) {
             // Charging
             hours = data.hours_until_full || 0;
             label = '✅ Full in';
@@ -232,13 +232,13 @@ function updateData() {
         document.getElementById('battery-time').textContent = hours > 0 ? hours.toFixed(1) + ' h' : '-- h';
 
         let totalGen = ((data.items.solarinverter_w || 0) + (data.items.shunt_w || 0) + (data.items.grid_w || 0)) / 1000;
-        document.getElementById('pv').textContent = totalGen.toFixed(1) + ' kW';
+        document.getElementById('pv').textContent = (Math.floor(totalGen * 10) / 10).toFixed(1) + ' kW';
         document.getElementById('load').textContent = ((data.items.load_w || 0) / 1000).toFixed(1) + ' kW';
         
         // Right card updates
         document.getElementById('temp').textContent = (data.temperature !== undefined ? data.temperature.toFixed(1) : '--') + ' °C';
-        document.getElementById('kwh-consumed').textContent = ((data.items.load_wh_today || 0) / 1000).toFixed(1) + ' kWh';
-        document.getElementById('kwh-generated').textContent = ((data.items.solar_wh_today || 0) / 1000).toFixed(1) + ' kWh';
+        document.getElementById('kwh-consumed').textContent = (data.items.load_wh_today || 0).toFixed(1) + ' kWh';
+        document.getElementById('gen-made').textContent = (data.items.grid_in_wh_today || 0).toFixed(1) + ' kWh';
         document.getElementById('battery-kw').textContent = ((data.items.battery_w || 0) / 1000).toFixed(1) + ' kW';
         document.getElementById('gen-status').textContent = (data.items.gen_status && data.items.gen_status !== 0) ? 'On' : 'Off';
         document.getElementById('fault-status').textContent = (data.items.fault_code && data.items.fault_code !== 0) ? 'YES' : 'No';
@@ -419,15 +419,19 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	}
 
 	// Fetch temperature from temper/temper
-	tempCmd := exec.Command("temper/temper")
+	tempCmd := exec.Command("./temper/temper", "-c")
 	tempOut, tempErr := tempCmd.Output()
 	var tempVal float64
 	if tempErr == nil {
 		tempStr := strings.TrimSpace(string(tempOut))
+		tempStr = strings.TrimSuffix(tempStr, "C")
+		tempStr = strings.TrimSpace(tempStr)
 		if val, err := strconv.ParseFloat(tempStr, 64); err == nil {
 			tempVal = val
 		}
-	}
+	} else {
+	  fmt.Printf("Error getting temp: %v\n", tempErr)
+  }
 
 	globalMutex.Lock()
 	if !headerPrinted || printedLines%10 == 0 {
@@ -448,7 +452,7 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	solarInverterW := int(data.Items.SolarInverterW)
 	totalPVW := solarInverterW + shuntW
 	generatorKwhToday := data.Items.GridInWhToday / 1000 // Convert Wh to kWh
-	loadKwhToday := data.Items.LoadWhToday / 1000        // Convert Wh to kWh
+	loadKwhToday := data.Items.LoadWhToday               // Already in kWh
 
 	globalMutex.RLock()
 	tempC := latestTemperature
@@ -460,7 +464,7 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	// Maintain a rolling history of the last 30 SelectronicItems
 	itemsHistoryMutex.Lock()
 	itemsHistory = append(itemsHistory, data.Items)
-	if len(itemsHistory) > 20 {
+	if len(itemsHistory) > 50 {
 		itemsHistory = itemsHistory[1:]
 	}
 	itemsHistoryMutex.Unlock()
@@ -517,5 +521,5 @@ func main() {
 		json.NewEncoder(w).Encode(out)
 	})
 
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":80", nil)
 }
