@@ -297,8 +297,6 @@ var (
 	latestTemperature float64
 	itemsHistory      []SelectronicItems
 	itemsHistoryMutex sync.Mutex
-
-	prevGeneratorKwhToday float64
 )
 
 const BatterykWh = 24
@@ -454,22 +452,27 @@ func FetchSelectronicData() (*SelectronicData, error) {
 	shuntW := int(data.Items.ShuntW)
 	solarInverterW := int(data.Items.SolarInverterW)
 	totalPVW := solarInverterW + shuntW + int(math.Abs(float64(data.Items.GridW)))
-	generatorKwhToday := data.Items.GridInWhToday / 1000 // Convert Wh to kWh
-	loadKwhToday := data.Items.LoadWhToday               // Already in kWh
+	generatorWhToday := data.Items.GridInWhToday // Keep in Wh
+	loadKwhToday := data.Items.LoadWhToday       // Already in kWh
 
-	// Set GenStatus = 1 if generatorKwhToday has increased since last fetch
-	if generatorKwhToday > prevGeneratorKwhToday {
-		data.Items.GenStatus = 1
-	} else {
-		data.Items.GenStatus = 0
+	// Set GenStatus = 1 if GridInWhToday has changed in any of the itemsHistory
+	itemsHistoryMutex.Lock()
+	genStatus := 0
+	for _, item := range itemsHistory {
+		if item.GridInWhToday != data.Items.GridInWhToday {
+			genStatus = 1
+			break
+		}
 	}
+	itemsHistoryMutex.Unlock()
+	data.Items.GenStatus = genStatus
 
 	globalMutex.RLock()
 	tempC := latestTemperature
 	globalMutex.RUnlock()
 
 	fmt.Printf("%-3.1f%%   %-10d %-8d %-8d %-10d %-12d %-14.2f %-14.2f %-8.2f\n",
-		soc, batteryW, loadW, shuntW, solarInverterW, totalPVW, generatorKwhToday, loadKwhToday, tempC)
+		soc, batteryW, loadW, shuntW, solarInverterW, totalPVW, generatorWhToday/1000.0, loadKwhToday, tempC)
 
 	// Maintain a rolling history of the last 30 SelectronicItems
 	itemsHistoryMutex.Lock()
@@ -478,8 +481,6 @@ func FetchSelectronicData() (*SelectronicData, error) {
 		itemsHistory = itemsHistory[1:]
 	}
 	itemsHistoryMutex.Unlock()
-
-	prevGeneratorKwhToday = generatorKwhToday
 
 	return &data, nil
 }
